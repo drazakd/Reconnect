@@ -1,62 +1,130 @@
-version: '3.8'
 services:
+  # Traefik Reverse Proxy
   traefik:
-    image: traefik:v2.9
+    image: traefik:v3.6
+    container_name: traefik
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     command:
-      - --providers.docker=true
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.le.acme.email=you@example.com
-      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      - --certificatesresolvers.le.acme.tlschallenge=true
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=reconnect_proxy"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letencrypt.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.letencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letencrypt.acme.httpchallenge.entrypoint=web"
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/acme.json:/letsencrypt/acme.json
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik_data:/letsencrypt"
     networks:
-      - traefik-public
-
-  backend:
-    build: ./backend
-    env_file: ./.env            # récupère DB_HOST, JWT_SECRET, etc.
+      - reconnect_proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`api.mondomain.com`)"
-      - "traefik.http.services.backend.loadbalancer.server.port=3000"
-      - "traefik.http.routers.backend.entrypoints=websecure"
-      - "traefik.http.routers.backend.tls.certresolver=le"
-    networks:
-      - backend
-      - traefik-public
+      # Dashboard routing (secure this in production!)
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DASHBOARD_DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letencrypt"
+      # Middleware to secure dashboard (add basic auth in production)
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
 
-  frontend:
-    build: ./frontend
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.front.rule=Host(`app.mondomain.com`)"
-      - "traefik.http.services.front.loadbalancer.server.port=80"
-      - "traefik.http.routers.front.entrypoints=websecure"
-      - "traefik.http.routers.front.tls.certresolver=le"
-    networks:
-      - traefik-public
-
+  # MySQL Database
   mysql:
-    image: mysql:8
+    image: mysql:9.5.0
+    container_name: reconnect-mysql-prod
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASS}
-      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: reconnect_app_db
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - db_data:/var/lib/mysql   # volume persistant pour MySQL:contentReference[oaicite:5]{index=5}:contentReference[oaicite:6]{index=6}
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
     networks:
-      - backend
+      - reconnect_backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u${DB_USER}", "-p${DB_PASSWORD}"]
+      timeout: 30s
+      retries: 10
+      start_period: 40s
+      interval: 10s
+    labels:
+      - "traefik.enable=false"
 
-volumes:
-  db_data:
+  # Backend API
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: reconnect-backend-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=mysql
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASSWORD}
+      - DB_NAME=reconnect_app_db
+      - DB_PORT=3306
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=3000
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - reconnect_backend
+      - reconnect_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=letencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=3000"
+      # Middlewares for security
+      - "traefik.http.routers.backend.middlewares=secure-headers@file"
+      # Redirect HTTP to HTTPS
+      - "traefik.http.routers.backend-http.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.backend-http.entrypoints=web"
+      - "traefik.http.routers.backend-http.middlewares=redirect-to-https"
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://${API_DOMAIN}
+    container_name: reconnect-frontend-prod
+    restart: unless-stopped
+    networks:
+      - reconnect_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${FRONTEND_DOMAIN}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+      # Middlewares for security
+      - "traefik.http.routers.frontend.middlewares=secure-headers@file"
+      # Redirect HTTP to HTTPS
+      - "traefik.http.routers.frontend-http.rule=Host(`${FRONTEND_DOMAIN}`)"
+      - "traefik.http.routers.frontend-http.entrypoints=web"
+      - "traefik.http.routers.frontend-http.middlewares=redirect-to-https"
 
 networks:
-  backend:
-  traefik-public:
+  reconnect_proxy:
+    driver: bridge
+  reconnect_backend:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  traefik_data:
+    driver: local
