@@ -1,0 +1,143 @@
+services:
+  mysql:
+    image: mysql:9.5.0
+    container_name: reconnect-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: reconnect_app_db
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    ports:
+      - "3307:3306"
+    networks:
+      - reconnect_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpassword"]
+      timeout: 30s
+      retries: 10
+      start_period: 40s
+      interval: 10s
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: reconnect-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PASS=rootpassword
+      - DB_NAME=reconnect_app_db
+      - DB_PORT=3306
+      - JWT_SECRET=your_jwt_secret_here_change_in_production
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - reconnect_network
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    command: >
+      sh -c "
+        echo '⏳ En attente du démarrage de MySQL...'
+        while ! nc -z mysql 3306; do
+          sleep 2
+        done
+        echo '✅ MySQL est prêt! Démarrage du backend...'
+        npm start
+      "
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: reconnect-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - reconnect_network
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:3000/api
+
+networks:
+  reconnect_network:
+    driver: bridge
+
+volumes:
+  db_data:
+
+
+
+# services:
+#   mysql:
+#     image: mysql:9.5.0
+#     restart: unless-stopped
+#     environment:
+#       MYSQL_ROOT_PASSWORD: tonSecretSuperSecurise123    # ex. tonSecretSuperSecurise123
+#       MYSQL_DATABASE: reconnect_app_db       # ex. reconnect_app_db
+#     volumes:
+#       - db_data:/var/lib/mysql          # persistance:contentReference[oaicite:3]{index=3}
+#     ports:
+#       - "3307:3306"                     # expose MySQL pour dev local
+#     healthcheck:
+#       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+#       timeout: 20s
+#       retries: 10
+
+#   backend:
+#     build: ./server
+#     command: node src/server.js              # mode dev (nodemon, Vite, ou autre)
+#     volumes:
+#       - ./server:/server
+#       - /app/node_modules
+#       - ./server/.env:/app/.env
+#     environment:
+#       - DB_HOST=${DB_HOST}                  # nom du service mysql
+#       - DB_USER=${DB_USER}           # ex. root
+#       - DB_PASS=${DB_PASS}
+#       - DB_NAME=${DB_NAME}
+#       - JWT_SECRET=tonSecretSuperSecurise123
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       - mysql
+#     networks:
+#       - server
+#       - client
+
+#   frontend:
+#     build: ./client
+#     command: npm run dev  # lance le serveur Vite sur 0.0.0.0
+#     volumes:
+#       - ./client:/app
+#       - /app/node_modules
+#     environment:
+#       - VITE_API_URL=http://backend:3000/api   # utilise l'alias Docker "server"
+#     ports:
+#       - "5173:5173"
+#     depends_on:
+#       - backend
+#     networks:
+#       - client
+#       - server
+
+# volumes:
+#   db_data:
+
+# networks:
+#   server:
+#   client:

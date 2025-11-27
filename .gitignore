@@ -1,0 +1,86 @@
+# ======================
+# Node.js (server + client)
+# ======================
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ======================
+# Build outputs
+# ======================
+dist/
+build/
+client/dist/
+server/dist/
+
+# ======================
+# Environment variables
+# ======================
+.env
+*.env
+.env.local
+.env.development
+.env.production
+server/.env
+client/.env
+
+# ======================
+# Logs
+# ======================
+logs/
+*.log
+debug.log
+error.log
+
+# ======================
+# Docker & MySQL
+# ======================
+docker-data/
+mysql/data/
+mysql/init/*.log
+*.sql.gz
+
+# Fichiers SQL à ignorer (sauf exceptions)
+*.sql
+!mysql/init/
+!mysql/init/*.sql
+
+# ======================
+# Cache
+# ======================
+.cache/
+.tmp/
+.npm
+.yarn/cache
+
+# ======================
+# OS Files
+# ======================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ======================
+# Editor settings
+# ======================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ======================
+# Uploads or personal files
+# ======================
+uploads/
+server/uploads/
+client/public/uploads/
+
+# ======================
+# Runtime data
+# ======================
+*.pid
+*.seed
+*.pid.lock

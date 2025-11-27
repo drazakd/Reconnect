@@ -1,0 +1,62 @@
+version: '3.8'
+services:
+  traefik:
+    image: traefik:v2.9
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.email=you@example.com
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/acme.json:/letsencrypt/acme.json
+    networks:
+      - traefik-public
+
+  backend:
+    build: ./backend
+    env_file: ./.env            # récupère DB_HOST, JWT_SECRET, etc.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.mondomain.com`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=le"
+    networks:
+      - backend
+      - traefik-public
+
+  frontend:
+    build: ./frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.front.rule=Host(`app.mondomain.com`)"
+      - "traefik.http.services.front.loadbalancer.server.port=80"
+      - "traefik.http.routers.front.entrypoints=websecure"
+      - "traefik.http.routers.front.tls.certresolver=le"
+    networks:
+      - traefik-public
+
+  mysql:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
+    volumes:
+      - db_data:/var/lib/mysql   # volume persistant pour MySQL:contentReference[oaicite:5]{index=5}:contentReference[oaicite:6]{index=6}
+    networks:
+      - backend
+
+volumes:
+  db_data:
+
+networks:
+  backend:
+  traefik-public:
