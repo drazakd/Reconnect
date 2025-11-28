@@ -8,7 +8,7 @@ const server = http.createServer(app); // Crée un serveur HTTP avec Express
 setupSocket(server); // Initialise socket.io avec gestion des événements
 
 server.listen(PORT, () => {
-  console.log(`🚀 Serveur HTTP+WebSocket actif sur http://localhost:${PORT}`);
+  console.log(`🚀 Serveur HTTP+WebSocket actif sur ${PORT}`);
 });
 
 
