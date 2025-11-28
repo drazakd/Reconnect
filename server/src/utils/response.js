@@ -11,11 +11,11 @@ export const success = (res, data = null, message = "Succès", code = 200) => {
 };
 
 // Réponses d'erreurs
-export const error = (res, message = "Erreur serveur", code = 500, details = null) => {
-  return res.status(code).json({
-    success: false,
-    code,
-    message,
-    ...(details && { details }), // Ajoute des infos complémentaires si dispo
-  });
+export const error = (res, status, message) => {
+  const code = Number(status);
+
+  return res
+    .status(code && !isNaN(code) ? code : 500)
+    .json({ error: message || "Erreur interne du serveur" });
 };
+
