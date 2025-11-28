@@ -1,26 +1,29 @@
-// Server/src/config/db.js
 import mysql from "mysql2/promise";
-import { DB_HOST, DB_USER, DB_PASS, DB_NAME } from "./env.js";
+import { DB_HOST, DB_USER, DB_PASS, DB_NAME, PORT } from "./env.js";
 
 const pool = mysql.createPool({
   host: DB_HOST,
+  port: PORT,
   user: DB_USER,
   password: DB_PASS,
   database: DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  charset: 'utf8mb4'
+  charset: "utf8mb4",
+  ssl: {
+    rejectUnauthorized: true, // ← obligatoire pour Aiven
+  },
 });
 
-// Test de connexion au démarrage
+// Test connexion
 (async () => {
   try {
-    const connection = await pool.getConnection();
-    console.log("✅ Connexion à la base de données réussie");
-    connection.release();
+    const conn = await pool.getConnection();
+    console.log("✅ Connexion MySQL OK");
+    conn.release();
   } catch (err) {
-    console.error("❌ Erreur de connexion à la base de données:", err.message);
+    console.error("❌ Erreur MySQL:", err);
   }
 })();
 
