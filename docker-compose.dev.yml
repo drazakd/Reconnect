@@ -72,7 +72,8 @@ services:
       - ./client:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=https://reconnect-wi6n.onrender.com/api
+      - VITE_API_URL=https://reconnect-three.vercel.app/api
+      - VITE_SOCKET_URL=https://reconnect-three.vercel.app
 
 networks:
   reconnect_network:
