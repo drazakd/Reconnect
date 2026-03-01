@@ -75,6 +75,16 @@ services:
       - VITE_API_URL=https://reconnect-three.vercel.app/api
       - VITE_SOCKET_URL=https://reconnect-three.vercel.app
 
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    container_name: duckdns
+    environment:
+      - SUBDOMAINS=reconnectapp  # Remplacez
+      - TOKEN=3e201c9e-9afa-43b0-8167-bed9145eb21d       # Remplacez
+      - LOG_FILE=false
+    restart: unless-stopped
+    network_mode: host # Optionnel, recommandé pour une détection IP fiable
+
 networks:
   reconnect_network:
     driver: bridge
